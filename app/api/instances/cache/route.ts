@@ -12,68 +12,72 @@ import path from "path";
 
 // Helper function to validate and fix thumbnail paths
 async function validateThumbnailPath(thumbnailPath: string): Promise<string> {
-  if (!thumbnailPath || thumbnailPath === '') {
-    return '/img/fedi_placeholder.png';
+  if (!thumbnailPath || thumbnailPath === "") {
+    return "/img/fedi_placeholder.png";
   }
-  
+
   // If it's already a runaway path (multiple /img/), fix it
-  if (thumbnailPath.includes('/img/img/')) {
+  if (thumbnailPath.includes("/img/img/")) {
     console.log(`Fixing runaway thumbnail path: ${thumbnailPath}`);
-    return '/img/fedi_placeholder.png';
+    return "/img/fedi_placeholder.png";
   }
-  
+
   // If it's a local path, check if file exists
-  if (thumbnailPath.startsWith('/img/')) {
+  if (thumbnailPath.startsWith("/img/")) {
     try {
-      const relativePath = thumbnailPath.startsWith('/') ? thumbnailPath.slice(1) : thumbnailPath;
-      const fullPath = path.resolve(process.cwd(), 'public', relativePath);
-      
+      const relativePath = thumbnailPath.startsWith("/")
+        ? thumbnailPath.slice(1)
+        : thumbnailPath;
+      const fullPath = path.resolve(process.cwd(), "public", relativePath);
+
       if (fs.existsSync(fullPath)) {
         return thumbnailPath; // File exists, return as is
       } else {
-        console.log(`Cached thumbnail not found: ${thumbnailPath}, using fallback`);
-        return '/img/fedi_placeholder.png';
+        console.log(
+          `Cached thumbnail not found: ${thumbnailPath}, using fallback`
+        );
+        return "/img/fedi_placeholder.png";
       }
     } catch (err) {
       console.error("Error validating cached thumbnail:", err);
-      return '/img/fedi_placeholder.png';
+      return "/img/fedi_placeholder.png";
     }
   }
-  
+
   return thumbnailPath; // Return as is if it's a remote URL or valid path
 }
 
 // Helper function to trigger revalidation
 async function triggerRevalidation(request: NextRequest) {
-  console.log('Starting revalidation after cache update...');
-  
+  console.log("Starting revalidation after cache update...");
+
   try {
     // Method 1: Tag-based revalidation
-    revalidateTag('instances');
-    console.log('Tag-based revalidation completed');
-    
+    revalidateTag("instances", "max");
+    console.log("Tag-based revalidation completed");
+
     // Method 2: Path-based revalidation
-    revalidatePath('/');
-    console.log('Path-based revalidation completed');
-    
+    revalidatePath("/");
+    console.log("Path-based revalidation completed");
+
     // Method 3: Direct API call (for Docker containers)
-    const host = request.headers.get('host') || 'localhost:3000';
-    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+    const host = request.headers.get("host") || "localhost:3000";
+    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const baseUrl = `${protocol}://${host}`;
-    
+
     try {
-      const response = await fetch(`${baseUrl}/api/revalidate`, { 
-        method: 'POST',
+      const response = await fetch(`${baseUrl}/api/revalidate`, {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       });
-      console.log('Revalidation API response:', response.status);
+      console.log("Revalidation API response:", response.status);
     } catch (apiErr) {
-      console.log('Revalidation API call failed:', apiErr);
+      console.log("Revalidation API call failed:", apiErr);
     }
   } catch (revalErr) {
-    console.log('Revalidation failed:', revalErr);
+    console.log("Revalidation failed:", revalErr);
   }
 }
 
@@ -93,8 +97,10 @@ export async function GET(request: NextRequest) {
       }
       if (updateInstance != false) {
         // Validate and fix the thumbnail path before saving
-        const validatedThumbnail = await validateThumbnailPath(updateInstance.thumbnail);
-        
+        const validatedThumbnail = await validateThumbnailPath(
+          updateInstance.thumbnail
+        );
+
         await prisma.instanceData.update({
           where: { instance_id: allInstances[i].id },
           data: {
@@ -139,57 +145,67 @@ export async function GET(request: NextRequest) {
       }
     }
   }
-  
+
   // Trigger revalidation after cache update
   await triggerRevalidation(request);
-  
+
   return NextResponse.json({ message: "successfully updated instances" });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { uri } = await request.json()
-    
+    const { uri } = await request.json();
+
     if (!uri) {
-      return NextResponse.json({ error: 'URI is required' }, { status: 400 })
+      return NextResponse.json({ error: "URI is required" }, { status: 400 });
     }
 
     // Find the instance
     const instance = await prisma.instances.findUnique({
-      where: { uri }
-    })
+      where: { uri },
+    });
 
     if (!instance) {
-      return NextResponse.json({ error: 'Instance not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: "Instance not found" },
+        { status: 404 }
+      );
     }
 
     // Get instance data
     const instanceData = await prisma.instanceData.findUnique({
-      where: { instance_id: instance.id }
-    })
+      where: { instance_id: instance.id },
+    });
 
     if (!instanceData) {
-      return NextResponse.json({ error: 'Instance data not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: "Instance data not found" },
+        { status: 404 }
+      );
     }
 
     // Validate thumbnail path to prevent runaway paths
-    if (instanceData.thumbnail && (
-      instanceData.thumbnail.startsWith('/img/img/') ||
-      instanceData.thumbnail.includes('//img/img/') ||
-      instanceData.thumbnail.startsWith('img/img/')
-    )) {
-      console.log('Skipping invalid thumbnail path:', instanceData.thumbnail)
-      return NextResponse.json({ 
-        error: 'Invalid thumbnail path detected',
-        thumbnail: instanceData.thumbnail
-      }, { status: 400 })
+    if (
+      instanceData.thumbnail &&
+      (instanceData.thumbnail.startsWith("/img/img/") ||
+        instanceData.thumbnail.includes("//img/img/") ||
+        instanceData.thumbnail.startsWith("img/img/"))
+    ) {
+      console.log("Skipping invalid thumbnail path:", instanceData.thumbnail);
+      return NextResponse.json(
+        {
+          error: "Invalid thumbnail path detected",
+          thumbnail: instanceData.thumbnail,
+        },
+        { status: 400 }
+      );
     }
 
     // Trigger revalidation
     await triggerRevalidation(request);
-    
-    return NextResponse.json({ 
-      success: true, 
+
+    return NextResponse.json({
+      success: true,
       instance: {
         id: instance.id,
         uri: instance.uri,
@@ -199,14 +215,17 @@ export async function POST(request: NextRequest) {
         registrations: instanceData.registrations,
         approval_required: instanceData.approval_required,
         user_count: instanceData.user_count,
-        nsfwflag: instance.nsfwflag
-      }
-    })
+        nsfwflag: instance.nsfwflag,
+      },
+    });
   } catch (error) {
-    console.error('Cache route error:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    console.error("Cache route error:", error);
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
   }
-} 
+}
